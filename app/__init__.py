@@ -23,7 +23,7 @@ def create_app(config_name=None):
     db.init_app(app)
     migrate.init_app(app, db)
     jwt.init_app(app)
-    cors.init_app(app, origins=app.config['CORS_ORIGINS'])
+    cors.init_app(app, origins=app.config['CORS_ORIGINS'], methods=['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'], allow_headers=['Content-Type', 'Authorization'])
     
     # Initialize Swagger for API documentation
     # Skip Swagger initialization in testing mode
