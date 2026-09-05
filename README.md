@@ -64,6 +64,7 @@ Three candidate models are trained and evaluated:
 ### Prerequisites
 - Python 3.10 or higher
 - Virtual environment (venv)
+- Neon Postgres account (for production deployment)
 
 ### Setup
 
@@ -100,19 +101,91 @@ copy .env.example .env
 # The default values work for local development
 ```
 
+### Database Setup
+
+The application supports both SQLite (for local development) and Neon Postgres (for production).
+
+#### Local Development (SQLite)
+
+By default, the application uses SQLite for local development. No additional setup is required:
+
+```bash
+# The .env file defaults to SQLite
+DATABASE_URL=sqlite:///phishshield.db
+```
+
+#### Production Deployment (Neon Postgres)
+
+For production deployment on Render, we use Neon Postgres for persistent data storage. Neon is a serverless Postgres database with a generous free tier.
+
+**Step 1: Create a Neon Project**
+
+1. Go to [https://neon.tech](https://neon.tech) and sign up for a free account
+2. Click "Create a project" 
+3. Choose a name for your project (e.g., "phishshield-ai")
+4. Select a region (choose one closest to your users)
+5. Click "Create Project"
+
+**Step 2: Get Your Connection String**
+
+1. After creating the project, Neon will show you a connection string
+2. The connection string will look like:
+   ```
+   postgresql://username:password@ep-cool-region.aws.neon.tech/database?sslmode=require
+   ```
+3. Copy this connection string - you'll need it for Render
+
+**Step 3: Configure Render Environment Variables**
+
+1. Go to your Render dashboard
+2. Select your PhishShield AI service
+3. Navigate to "Environment" section
+4. Add a new environment variable:
+   - **Key**: `DATABASE_URL`
+   - **Value**: Paste your Neon connection string
+5. Make sure the connection string includes `?sslmode=require` (Neon requires SSL)
+
+**Step 4: Deploy**
+
+1. Push your code to GitHub
+2. Connect your repository to Render
+3. Deploy using the `render.yaml` configuration file
+4. The build command will automatically run database migrations
+5. Your application will start with persistent Neon Postgres storage
+
+**Important Notes:**
+- Never commit real database credentials to the repository
+- Use the `.env.example` file as a template with placeholder values only
+- Neon's free tier includes 0.5GB storage and sufficient compute for small applications
+- The application automatically runs migrations on deployment via the startup script
+
 ## Quickstart (Flask API)
 
 Get the Flask API running with Swagger documentation in minutes:
 
 ### 1. Setup Database and Seed Demo Data
+
+**For Local Development (SQLite):**
 ```bash
 # Initialize the database and seed with demo data
 python scripts/seed_demo_data.py
 ```
 
-This creates a demo user with credentials:
-- **Username**: `demouser`
-- **Password**: `DemoPassword123!`
+**For Production (Neon Postgres):**
+```bash
+# Set DATABASE_URL environment variable to your Neon connection string
+export DATABASE_URL="postgresql://user:password@host/dbname?sslmode=require"
+
+# Run migrations (this also happens automatically on deploy)
+python -m flask db upgrade
+
+# Seed demo data (optional - for testing with Neon)
+python scripts/seed_demo_data.py
+```
+
+This creates demo users with credentials:
+- **Regular User**: `demouser` / `DemoPassword123!`
+- **Admin User**: `admin` / `AdminPassword123!`
 
 ### 2. Start the Flask Server
 ```bash
@@ -303,9 +376,27 @@ features = extract_features("https://example.com")
 
 ## Environment Variables
 
-For Kaggle dataset download (optional):
-- `KAGGLE_USERNAME`: Your Kaggle username
-- `KAGGLE_KEY`: Your Kaggle API key
+### Application Configuration
+- `FLASK_APP`: Flask application entry point (default: `run.py`)
+- `FLASK_ENV`: Environment mode (`development` or `production`)
+- `SECRET_KEY`: Flask secret key for session management
+- `JWT_SECRET_KEY`: Secret key for JWT token signing
+- `PORT`: Server port (default: 5000)
+
+### Database Configuration
+- `DATABASE_URL`: Database connection string
+  - **Local development**: `sqlite:///phishshield.db`
+  - **Production**: `postgresql://user:password@host/dbname?sslmode=require` (Neon)
+
+### Model Configuration
+- `MODEL_PATH`: Path to the trained ML model (default: `models/phishshield_model.pkl`)
+
+### CORS Configuration
+- `CORS_ORIGINS`: Comma-separated list of allowed CORS origins
+
+### Optional Variables
+- `KAGGLE_USERNAME`: Your Kaggle username (for dataset download)
+- `KAGGLE_KEY`: Your Kaggle API key (for dataset download)
 
 ## Development Notes
 
@@ -375,6 +466,96 @@ Admin endpoints allow:
 - **Monitor System Activity**: View system-wide statistics and usage patterns
 
 **Data Retention Policy**: When an admin deletes a user account, all associated scan records and ML features are automatically deleted via cascade delete. This ensures data consistency and complies with data retention policies.
+
+## Database Migrations
+
+The application uses Flask-Migrate for database schema management. This ensures that database changes are tracked and applied consistently across deployments.
+
+### Migration Commands
+
+```bash
+# Initialize migrations (only needed once)
+python -m flask db init
+
+# Generate a new migration
+python -m flask db migrate -m "Description of changes"
+
+# Apply migrations to the database
+python -m flask db upgrade
+
+# Rollback to previous migration
+python -m flask db downgrade
+
+# View current migration version
+python -m flask db current
+```
+
+### Automatic Migrations
+
+- **Development**: Migrations run automatically when you start the app with `python run.py`
+- **Production**: Migrations run automatically during the Render build process via `scripts/startup_migrations.py`
+- **Seeding**: The `seed_demo_data.py` script now uses migrations instead of raw SQL
+
+### Data Persistence
+
+With Neon Postgres:
+- ✅ Data survives deployments and restarts
+- ✅ Automatic backups provided by Neon
+- ✅ No data loss when Render spins down your service
+- ✅ Easy scaling and connection pooling
+
+With SQLite (local development):
+- ✅ No network dependency for development
+- ✅ Fast and simple for local testing
+- ❌ Data lost on service restart (not suitable for production)
+
+## Deployment
+
+### Render Deployment
+
+The application includes a `render.yaml` configuration file for easy deployment to Render:
+
+1. **Push code to GitHub**
+2. **Connect repository to Render**
+3. **Configure environment variables:**
+   - `DATABASE_URL`: Your Neon Postgres connection string
+   - `SECRET_KEY`: Auto-generated by Render
+   - `JWT_SECRET_KEY`: Auto-generated by Render
+   - `CORS_ORIGINS`: Your frontend domain
+4. **Deploy** - Render will automatically:
+   - Install dependencies
+   - Run database migrations
+   - Start the application with Gunicorn
+
+### Manual Verification After Deployment
+
+After deployment, verify the setup:
+
+1. **Check database connectivity:**
+   ```bash
+   curl https://your-app.onrender.com/api/health
+   ```
+
+2. **Test user registration:**
+   ```bash
+   curl -X POST https://your-app.onrender.com/api/auth/register \
+     -H "Content-Type: application/json" \
+     -d '{"username":"testuser","email":"test@example.com","password":"TestPass123!"}'
+   ```
+
+3. **Test URL scanning:**
+   ```bash
+   curl -X POST https://your-app.onrender.com/api/scan/ \
+     -H "Content-Type: application/json" \
+     -H "Authorization: Bearer YOUR_JWT_TOKEN" \
+     -d '{"url":"https://example.com"}'
+   ```
+
+4. **Trigger a redeploy** to verify data persistence:
+   - Make a small code change (e.g., update a comment)
+   - Push to GitHub
+   - Wait for redeploy to complete
+   - Verify your test user and scan data still exist
 
 ## Next Steps (Sprint 4)
 

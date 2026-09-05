@@ -1,0 +1,24 @@
+# Render deployment configuration for PhishShield AI
+# This file defines how the application is deployed on Render
+
+services:
+  - type: web
+    name: phishshield-ai
+    env: python
+    buildCommand: "pip install -r requirements.txt && python scripts/startup_migrations.py"
+    startCommand: "gunicorn run:app"
+    envVars:
+      - key: FLASK_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false # Set this in Render dashboard using Neon connection string
+      - key: SECRET_KEY
+        generateValue: true
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: MODEL_PATH
+        value: models/phishshield_model.pkl
+      - key: CORS_ORIGINS
+        value: https://your-frontend-domain.com
+      - key: PORT
+        value: 10000

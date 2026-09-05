@@ -6,6 +6,7 @@ Creates a test user and sample scan records for testing the API.
 import sys
 import os
 from datetime import datetime, timedelta, timezone
+from flask_migrate import upgrade
 
 # Add the parent directory to the path to import app modules
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -22,25 +23,25 @@ def seed_demo_data():
     app = create_app('development')
     
     with app.app_context():
-        # Get database path and delete it to ensure clean schema
-        db_uri = app.config['SQLALCHEMY_DATABASE_URI']
-        if db_uri.startswith('sqlite:///'):
-            db_path = db_uri.replace('sqlite:///', '')
-        else:
-            db_path = db_uri.replace('sqlite://', '')
+        # Run migrations to ensure database schema is up to date
+        print("Running database migrations...")
+        try:
+            upgrade()
+            print("Migrations completed successfully.")
+        except Exception as e:
+            print(f"Migration failed: {e}")
+            # Fallback to creating tables if migration fails
+            print("Falling back to creating tables directly...")
+            db.create_all()
+            print("Tables created directly.")
         
-        # Delete existing database to ensure clean schema with role field
-        if os.path.exists(db_path):
-            try:
-                os.remove(db_path)
-                print(f"Deleted existing database: {db_path}")
-            except Exception as e:
-                print(f"Warning: Could not delete database file: {e}")
-        
-        # Drop all tables and recreate with new schema
-        db.drop_all()
-        db.create_all()
-        print("Database created with new schema including role field.")
+        # Clear existing data (for development purposes)
+        print("Clearing existing demo data...")
+        ML_Features.query.delete()
+        ScanRecord.query.delete()
+        User.query.delete()
+        db.session.commit()
+        print("Existing data cleared.")
         
         print("Seeding demo data...")
         
@@ -242,6 +243,8 @@ def seed_demo_data():
         print("  POST /api/auth/login")
         print('  {"username": "demouser", "password": "DemoPassword123!"}')
         print('  {"username": "admin", "password": "AdminPassword123!"}')
+        print("\nNote: This script now uses Flask-Migrate for database schema management.")
+        print("For production deployment, ensure DATABASE_URL is set and migrations run automatically.")
 
 
 if __name__ == '__main__':

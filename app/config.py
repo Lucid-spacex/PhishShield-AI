@@ -23,8 +23,24 @@ class Config:
     JWT_IDENTITY_CLAIM = 'sub'
     
     # Database settings
-    db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'phishshield.db')
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or f'sqlite:///{db_path}'
+    # Support both Postgres (Neon) and SQLite for local development
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    
+    if DATABASE_URL:
+        # Use Postgres (Neon) - typically from production environment
+        # Ensure SSL mode is set for Neon compatibility
+        if 'sslmode' not in DATABASE_URL:
+            if '?' in DATABASE_URL:
+                SQLALCHEMY_DATABASE_URI = DATABASE_URL + '&sslmode=require'
+            else:
+                SQLALCHEMY_DATABASE_URI = DATABASE_URL + '?sslmode=require'
+        else:
+            SQLALCHEMY_DATABASE_URI = DATABASE_URL
+    else:
+        # Fallback to SQLite for local development
+        db_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'phishshield.db')
+        SQLALCHEMY_DATABASE_URI = f'sqlite:///{db_path}'
+    
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     
     # Model settings
