@@ -8,6 +8,10 @@ from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identi
 from app.extensions import db
 from app.models.user import User
 import re
+import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 auth_bp = Blueprint('auth', __name__)
 
@@ -242,6 +246,7 @@ def login():
               type: string
               example: Login failed
     """
+    start_time = time.time()
     try:
         data = request.get_json()
         
@@ -252,14 +257,25 @@ def login():
         username = data['username'].strip()
         password = data['password']
         
+        logger.info(f"Login attempt for user: {username}")
+        
         # Find user
+        db_query_start = time.time()
         user = User.query.filter_by(username=username).first()
+        db_query_time = time.time() - db_query_start
+        logger.info(f"Database query took: {db_query_time:.3f}s")
         
         if not user or not user.check_password(password):
             return jsonify({'error': 'Invalid username or password'}), 401
         
         # Generate access token (use string identity for JWT compatibility)
+        token_start = time.time()
         access_token = create_access_token(identity=str(user.user_id))
+        token_time = time.time() - token_start
+        logger.info(f"Token generation took: {token_time:.3f}s")
+        
+        total_time = time.time() - start_time
+        logger.info(f"Total login time: {total_time:.3f}s")
         
         return jsonify({
             'message': 'Login successful',
@@ -268,6 +284,7 @@ def login():
         }), 200
         
     except Exception as e:
+        logger.error(f"Login failed: {e}")
         return jsonify({'error': 'Login failed', 'message': str(e)}), 500
 
 

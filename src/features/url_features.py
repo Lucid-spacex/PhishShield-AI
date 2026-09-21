@@ -44,7 +44,7 @@ def extract_features(url: str) -> Dict[str, float]:
         logger.warning(f"Invalid URL provided: {url}")
         return {
             'url_length': 0,
-            'domain_entropy': 0,
+            'domain_entropy': 0.0,
             'has_https': 0,
             'has_ip_address': 0,
             'dot_count': 0,

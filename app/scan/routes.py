@@ -12,6 +12,7 @@ from app.models.ml_features import ML_Features
 from datetime import datetime
 import re
 import json
+import time
 
 scan_bp = Blueprint('scan', __name__)
 
@@ -157,6 +158,7 @@ def submit_url():
               example: Scan failed
     """
     try:
+        start_time = time.time()
         data = request.get_json()
         
         # Validate request
@@ -179,19 +181,18 @@ def submit_url():
         from flask import current_app
         predictor = current_app.predictor
         if predictor is None:
-            # Return mock response for testing
-            return jsonify({
-                'label': 'legitimate',
-                'confidence_score': 0.95,
-                'risk_indicators': [],
-                'scan_id': 0,
-                'scan_time': datetime.utcnow().isoformat()
-            }), 201
+            # Return error if predictor is not available (not a mock response)
+            return jsonify({'error': 'ML predictor not available', 'message': 'The ML model failed to load. Please contact support.'}), 503
         
         # Run prediction
+        prediction_start = time.time()
         prediction_result = predictor.predict(normalized_url)
+        prediction_time = time.time() - prediction_start
+        from flask import current_app
+        current_app.logger.info(f"Prediction took {prediction_time:.3f}s for URL: {normalized_url}")
         
         # Create scan record
+        db_start = time.time()
         scan_record = ScanRecord(
             user_id=current_user_id,
             url_scanned=normalized_url,
@@ -211,6 +212,11 @@ def submit_url():
         db.session.add(ml_features)
         
         db.session.commit()
+        db_time = time.time() - db_start
+        current_app.logger.info(f"Database operations took {db_time:.3f}s")
+        
+        total_time = time.time() - start_time
+        current_app.logger.info(f"Total scan submission took {total_time:.3f}s")
         
         # Return response
         return jsonify({
@@ -312,6 +318,7 @@ def get_scan_history():
               example: Failed to get scan history
     """
     try:
+        start_time = time.time()
         current_user_id = int(get_jwt_identity())
         
         # Get pagination parameters
@@ -325,11 +332,23 @@ def get_scan_history():
             per_page = 20
         
         # Query scans
+        db_start = time.time()
         pagination = ScanRecord.query.filter_by(user_id=current_user_id)\
             .order_by(ScanRecord.scan_time.desc())\
             .paginate(page=page, per_page=per_page, error_out=False)
+        db_time = time.time() - db_start
         
         scans = [scan.to_dict(include_features=False) for scan in pagination.items]
+        
+        # Log NaN values for debugging
+        nan_count = sum(1 for scan in scans if scan.get('risk_score') is None or (isinstance(scan.get('risk_score'), float) and str(scan.get('risk_score')) == 'nan'))
+        if nan_count > 0:
+            from flask import current_app
+            current_app.logger.warning(f"Found {nan_count} scans with NaN/None risk_score in history response")
+        
+        total_time = time.time() - start_time
+        from flask import current_app
+        current_app.logger.info(f"Scan history took {total_time:.3f}s (DB query: {db_time:.3f}s)")
         
         return jsonify({
             'scans': scans,

@@ -120,7 +120,12 @@ def create_app(config_name=None):
     # Health check endpoint
     @app.route('/health')
     def health_check():
-        return jsonify({'status': 'healthy', 'service': 'PhishShield AI API'})
+        import time
+        start_time = time.time()
+        result = jsonify({'status': 'healthy', 'service': 'PhishShield AI API'})
+        duration = time.time() - start_time
+        app.logger.info(f"Health check completed in {duration:.3f}s")
+        return result
     
     # API health endpoint with version info
     @app.route('/api/health')

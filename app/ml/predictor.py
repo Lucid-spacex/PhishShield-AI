@@ -5,7 +5,9 @@ Loads the production model package and wraps url_features for inference.
 
 import joblib
 import numpy as np
+import pandas as pd
 import logging
+import warnings
 from pathlib import Path
 from typing import Dict, Tuple
 import sys
@@ -18,6 +20,9 @@ from features.url_features import extract_features
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+# Suppress sklearn warnings about version differences
+warnings.filterwarnings('ignore', category=UserWarning, module='sklearn')
 
 
 class PhishingPredictor:
@@ -84,16 +89,18 @@ class PhishingPredictor:
             
             # Apply scaling if available
             if self.scaler is not None:
-                feature_vector = self.scaler.transform([feature_vector])[0]
+                # Convert to numpy array and reshape for scaler
+                feature_array = np.array(feature_vector).reshape(1, -1)
+                feature_vector = self.scaler.transform(feature_array)[0]
             else:
-                feature_vector = np.array(feature_vector).reshape(1, -1)
+                feature_vector = np.array(feature_vector)
             
             # Get prediction
-            prediction = self.model.predict(feature_vector.reshape(1, -1))[0]
+            prediction = self.model.predict([feature_vector])[0]
             
             # Get confidence score (probability)
             if hasattr(self.model, 'predict_proba'):
-                probabilities = self.model.predict_proba(feature_vector.reshape(1, -1))[0]
+                probabilities = self.model.predict_proba([feature_vector])[0]
                 confidence = max(probabilities)
             else:
                 # For models without predict_proba, use decision function or default
@@ -105,6 +112,8 @@ class PhishingPredictor:
             # Generate risk indicators
             risk_indicators = self._generate_risk_indicators(features, label)
             
+            logger.info(f"Prediction for {url}: label={label}, confidence={confidence:.4f}")
+            
             return {
                 'label': label,
                 'confidence_score': float(confidence),
@@ -113,8 +122,9 @@ class PhishingPredictor:
             }
             
         except Exception as e:
-            logger.error(f"Error during prediction: {e}")
-            raise
+            logger.error(f"Error during prediction for {url}: {e}")
+            # Re-raise with more context
+            raise ValueError(f"Prediction failed for URL '{url}': {str(e)}")
     
     def _validate_features(self, features: Dict):
         """
@@ -140,6 +150,8 @@ class PhishingPredictor:
                 error_msg += f"Extra features: {extra}. "
             
             logger.error(error_msg)
+            logger.error(f"Expected: {expected_features}")
+            logger.error(f"Actual: {actual_features}")
             raise ValueError(error_msg)
     
     def _prepare_feature_vector(self, features: Dict) -> list:
